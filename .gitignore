@@ -1,4 +1,6 @@
 node_modules
 .env
 .env.*
+!.env.example
 *.mp3
+*.mp4
