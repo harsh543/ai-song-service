@@ -1,7 +1,11 @@
 import express from "express";
 import crypto from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.use(express.static(path.join(__dirname, "public")));
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const SHOPIFY_WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET;
@@ -13,18 +17,6 @@ if (!ELEVENLABS_API_KEY) {
 }
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
-
-app.get("/", (_req, res) => {
-	res.json({
-		service: "ai-song-service",
-		status: "ok",
-		endpoints: {
-			"GET /health": "liveness check",
-			"POST /generate-song": "{ prompt: string, musicLengthMs?: number } -> MP3 bytes",
-			"POST /webhook/order-paid": "Shopify order-paid webhook receiver (HMAC verified)",
-		},
-	});
-});
 
 // Core capability: given a text prompt, return a generated song as audio bytes.
 // This is the piece every other endpoint (Shopify webhook, manual testing) builds on.

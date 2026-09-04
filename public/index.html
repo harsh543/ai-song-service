@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Song Generator</title>
+<style>
+	:root { color-scheme: dark; }
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		min-height: 100vh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: #0b0c10;
+		color: #e7e9ee;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		padding: 24px;
+	}
+	main {
+		width: 100%;
+		max-width: 480px;
+		background: #12141a;
+		border: 1px solid #22252f;
+		border-radius: 20px;
+		padding: 28px;
+	}
+	h1 { font-size: 1.4rem; margin: 0 0 4px; }
+	p.sub { color: #8b90a0; font-size: 0.9rem; margin: 0 0 24px; }
+	label { display: block; font-size: 0.8rem; color: #8b90a0; margin-bottom: 6px; }
+	textarea {
+		width: 100%;
+		min-height: 90px;
+		resize: vertical;
+		background: #0b0c10;
+		border: 1px solid #22252f;
+		border-radius: 10px;
+		color: #e7e9ee;
+		padding: 12px;
+		font-size: 0.95rem;
+		font-family: inherit;
+	}
+	select {
+		background: #0b0c10;
+		border: 1px solid #22252f;
+		border-radius: 8px;
+		color: #e7e9ee;
+		padding: 8px 10px;
+	}
+	.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+	button {
+		background: #5eead4;
+		color: #0b0c10;
+		border: none;
+		border-radius: 10px;
+		padding: 12px 20px;
+		font-weight: 600;
+		font-size: 0.95rem;
+		cursor: pointer;
+	}
+	button:disabled { background: #2b3139; color: #73798a; cursor: not-allowed; }
+	#status { margin-top: 16px; font-size: 0.85rem; color: #8b90a0; min-height: 1.2em; }
+	#result { margin-top: 16px; display: none; }
+	audio { width: 100%; margin-top: 8px; }
+	a.download { display: inline-block; margin-top: 8px; color: #5eead4; font-size: 0.85rem; text-decoration: none; }
+</style>
+</head>
+<body>
+<main>
+	<h1>AI Song Generator</h1>
+	<p class="sub">Describe a song. Get back a real generated track with AI vocals, in seconds.</p>
+
+	<label for="prompt">Describe the song</label>
+	<textarea id="prompt" placeholder="upbeat lo-fi pop, warm female vocal, hopeful lyrics about starting something new">upbeat lo-fi pop song, generic warm female vocal, hopeful lyrics about starting something new</textarea>
+
+	<div class="row">
+		<div>
+			<label for="length" style="margin-bottom:0;">Length</label>
+			<select id="length">
+				<option value="10000">10 seconds</option>
+				<option value="20000" selected>20 seconds</option>
+				<option value="30000">30 seconds</option>
+			</select>
+		</div>
+		<button id="go">Generate song</button>
+	</div>
+
+	<div id="status"></div>
+	<div id="result">
+		<audio id="player" controls></audio>
+		<br />
+		<a id="downloadLink" class="download" download="song.mp3">Download MP3</a>
+	</div>
+</main>
+
+<script>
+	const promptEl = document.getElementById("prompt");
+	const lengthEl = document.getElementById("length");
+	const goBtn = document.getElementById("go");
+	const statusEl = document.getElementById("status");
+	const resultEl = document.getElementById("result");
+	const player = document.getElementById("player");
+	const downloadLink = document.getElementById("downloadLink");
+
+	goBtn.addEventListener("click", async () => {
+		const prompt = promptEl.value.trim();
+		if (!prompt) {
+			statusEl.textContent = "Enter a description first.";
+			return;
+		}
+
+		goBtn.disabled = true;
+		resultEl.style.display = "none";
+		statusEl.textContent = "Generating... this calls a real AI music model, usually 10-30 seconds.";
+
+		try {
+			const res = await fetch("/generate-song", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ prompt, musicLengthMs: Number(lengthEl.value) }),
+			});
+
+			if (!res.ok) {
+				const detail = await res.text();
+				throw new Error(`Generation failed (${res.status}): ${detail}`);
+			}
+
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			player.src = url;
+			downloadLink.href = url;
+			resultEl.style.display = "block";
+			statusEl.textContent = "Done. Real generated audio, not a sample.";
+			player.play().catch(() => {});
+		} catch (err) {
+			statusEl.textContent = err.message || "Something went wrong.";
+		} finally {
+			goBtn.disabled = false;
+		}
+	});
+</script>
+</body>
+</html>
