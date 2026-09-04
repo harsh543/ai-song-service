@@ -23,7 +23,10 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // throwing) on any failure so callers can fall back to prompt-only generation instead of
 // failing the whole request over an optional enhancement.
 async function writeLyrics(theme) {
-	if (!GEMINI_API_KEY) return null;
+	if (!GEMINI_API_KEY) {
+		console.error("writeLyrics: GEMINI_API_KEY not set, skipping.");
+		return null;
+	}
 	try {
 		const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
 			method: "POST",
@@ -43,12 +46,16 @@ Return exactly 8 short lines, no verse/chorus labels, no explanation, no quotes 
 		// text lives in whichever step has type "model_output".
 		const modelOutput = data.steps?.find((s) => s.type === "model_output");
 		const text = modelOutput?.content?.find((c) => c.type === "text")?.text;
-		if (!text) return null;
+		if (!text) {
+			console.error("writeLyrics: no text in response", JSON.stringify(data).slice(0, 500));
+			return null;
+		}
 		const lines = text
 			.split("\n")
 			.map((l) => l.trim())
 			.filter(Boolean)
 			.slice(0, 8);
+		if (!lines.length) console.error("writeLyrics: text present but no usable lines", text);
 		return lines.length ? lines : null;
 	} catch (error) {
 		console.error("writeLyrics failed", error);
