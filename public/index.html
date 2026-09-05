@@ -75,6 +75,9 @@
 	.mcp-badge { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.78rem; color: #8b90a0; }
 	.mcp-dot { width: 6px; height: 6px; border-radius: 50%; background: #f5a623; }
 	.mcp-dot.ready { background: #5eead4; }
+	footer { text-align: center; font-size: 0.78rem; color: #626878; line-height: 1.6; }
+	footer a { color: #5eead4; text-decoration: none; }
+	footer a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -138,6 +141,11 @@
 		<span id="mcpDot" class="mcp-dot"></span>
 		<span id="mcpText">Checking for WebMCP...</span>
 	</div>
+
+	<footer>
+		Looking for tempo, mood, or instrument ideas? Try the pattern in
+		<a href="https://pulse-webmcp.vercel.app" target="_blank" rel="noopener">Pulse</a> first, then describe it here.
+	</footer>
 </main>
 
 <script>
