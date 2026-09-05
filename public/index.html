@@ -137,6 +137,18 @@
 		</div>
 	</section>
 
+	<section class="combine">
+		<h2>Combine</h2>
+		<p class="sub" id="combineHint">Generate a song and a video above first. Once both exist, combine them into one file: the video's picture, the song's audio -- the video's own sound is discarded entirely.</p>
+		<button id="goCombine" disabled>Combine song + video</button>
+		<div id="combineStatus" class="status"></div>
+		<div id="combineResult" class="result">
+			<video id="combinedPlayer" controls></video>
+			<br />
+			<a id="downloadCombined" class="download" download="combined.mp4">Download MP4</a>
+		</div>
+	</section>
+
 	<div id="mcpBadge" class="mcp-badge">
 		<span id="mcpDot" class="mcp-dot"></span>
 		<span id="mcpText">Checking for WebMCP...</span>
@@ -149,10 +161,23 @@
 </main>
 
 <script>
+	// Holds the most recently generated song/video blobs so the Combine section can mux
+	// them without regenerating anything -- set by runGeneration whenever a request
+	// completes, keyed by which section produced it.
+	const lastBlobs = { song: null, video: null };
+
+	function refreshCombineButton() {
+		const btn = document.getElementById("goCombine");
+		const hint = document.getElementById("combineHint");
+		const ready = Boolean(lastBlobs.song && lastBlobs.video);
+		btn.disabled = !ready;
+		if (ready) hint.textContent = "Ready. This runs a real ffmpeg mux -- video's picture, song's audio, nothing from the video's own soundtrack.";
+	}
+
 	// Shared by both the click handlers below and the WebMCP tools registered further
 	// down -- a tool call drives the exact same fetch + DOM update a click does, so a
 	// viewer sees the page react identically no matter which one triggered it.
-	async function runGeneration({ statusId, resultId, mediaId, downloadId, url, body, busyText, doneText, extra }) {
+	async function runGeneration({ statusId, resultId, mediaId, downloadId, url, body, busyText, doneText, extra, blobKind }) {
 		const statusEl = document.getElementById(statusId);
 		const resultEl = document.getElementById(resultId);
 		const media = document.getElementById(mediaId);
@@ -184,8 +209,60 @@
 		statusEl.textContent = doneText;
 		if (extra) extra({ lyrics });
 		media.play?.().catch(() => {});
+		if (blobKind) {
+			lastBlobs[blobKind] = blob;
+			refreshCombineButton();
+		}
 		return lyrics;
 	}
+
+	function blobToBase64(blob) {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result.split(",")[1]);
+			reader.onerror = reject;
+			reader.readAsDataURL(blob);
+		});
+	}
+
+	document.getElementById("goCombine").addEventListener("click", async () => {
+		const btn = document.getElementById("goCombine");
+		const statusEl = document.getElementById("combineStatus");
+		const resultEl = document.getElementById("combineResult");
+		const player = document.getElementById("combinedPlayer");
+		const downloadLink = document.getElementById("downloadCombined");
+
+		btn.disabled = true;
+		resultEl.style.display = "none";
+		statusEl.textContent = "Muxing video + song with ffmpeg...";
+
+		try {
+			const [songBase64, videoBase64] = await Promise.all([
+				blobToBase64(lastBlobs.song),
+				blobToBase64(lastBlobs.video),
+			]);
+			const res = await fetch("/combine", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ songBase64, videoBase64 }),
+			});
+			if (!res.ok) {
+				const detail = await res.text();
+				throw new Error(`Combine failed (${res.status}): ${detail}`);
+			}
+			const blob = await res.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			player.src = objectUrl;
+			downloadLink.href = objectUrl;
+			resultEl.style.display = "block";
+			statusEl.textContent = "Done. Video's picture, song's audio -- video's own sound was discarded.";
+			player.play?.().catch(() => {});
+		} catch (err) {
+			statusEl.textContent = err.message || "Something went wrong.";
+		} finally {
+			refreshCombineButton();
+		}
+	});
 
 	function wireButton({ btnId, buildBody, ...rest }) {
 		const btn = document.getElementById(btnId);
@@ -215,6 +292,7 @@
 		url: "/generate-song",
 		busyText: "Writing lyrics and generating the song... usually 10-30 seconds.",
 		doneText: "Done. Real generated audio, not a sample.",
+		blobKind: "song",
 		buildBody: () => {
 			const prompt = document.getElementById("prompt").value.trim();
 			if (!prompt) return { error: "Enter a description first." };
@@ -234,6 +312,7 @@
 		url: "/generate-video",
 		busyText: "Generating video... this is a real async job, can take 1-3 minutes. Hang tight.",
 		doneText: "Done. Real generated video.",
+		blobKind: "video",
 		buildBody: () => {
 			const prompt = document.getElementById("videoPrompt").value.trim();
 			if (!prompt) return { error: "Enter a description first." };
@@ -268,6 +347,7 @@
 					body: { prompt, musicLengthMs },
 					busyText: "Writing lyrics and generating the song... usually 10-30 seconds.",
 					doneText: "Done. Real generated audio, not a sample.",
+					blobKind: "song",
 					extra: ({ lyrics }) => {
 						document.getElementById("lyricsOut").textContent = lyrics ? lyrics.join("\n") : "";
 					},
@@ -299,6 +379,7 @@
 					body: { prompt, durationSeconds },
 					busyText: "Generating video... this is a real async job, can take 1-3 minutes. Hang tight.",
 					doneText: "Done. Real generated video.",
+					blobKind: "video",
 				});
 				return "Generated and is now playing.";
 			},

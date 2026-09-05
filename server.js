@@ -1,7 +1,13 @@
 import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
+import os from "node:os";
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import ffmpegPath from "ffmpeg-static";
+import ffmpeg from "fluent-ffmpeg";
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -196,6 +202,47 @@ app.post("/generate-video", express.json(), async (req, res) => {
 	} catch (error) {
 		console.error("generate-video failed", error);
 		res.status(500).json({ error: "Unexpected server error." });
+	}
+});
+
+// Combines an already-generated song and video into one file: the video's picture,
+// the song's audio -- an actual mux via ffmpeg, not a browser-side overlay (the two
+// clips are separate files with separate audio tracks; there's no way to make a video
+// element "play" another element's audio as its own soundtrack without doing this).
+app.post("/combine", express.json({ limit: "50mb" }), async (req, res) => {
+	const { songBase64, videoBase64 } = req.body ?? {};
+	if (!songBase64 || !videoBase64) {
+		return res.status(400).json({ error: "Body must include songBase64 and videoBase64." });
+	}
+
+	const id = crypto.randomUUID();
+	const songPath = path.join(os.tmpdir(), `combine-song-${id}.mp3`);
+	const videoPath = path.join(os.tmpdir(), `combine-video-${id}.mp4`);
+	const outPath = path.join(os.tmpdir(), `combine-out-${id}.mp4`);
+
+	try {
+		await fs.writeFile(songPath, Buffer.from(songBase64, "base64"));
+		await fs.writeFile(videoPath, Buffer.from(videoBase64, "base64"));
+
+		await new Promise((resolve, reject) => {
+			ffmpeg()
+				.input(videoPath)
+				.input(songPath)
+				.outputOptions(["-map 0:v:0", "-map 1:a:0", "-c:v copy", "-shortest"])
+				.save(outPath)
+				.on("end", resolve)
+				.on("error", reject);
+		});
+
+		const combined = await fs.readFile(outPath);
+		res.set("Content-Type", "video/mp4");
+		res.set("Content-Disposition", 'attachment; filename="combined.mp4"');
+		res.send(combined);
+	} catch (error) {
+		console.error("combine failed", error);
+		res.status(500).json({ error: "Combining song and video failed.", detail: String(error) });
+	} finally {
+		await Promise.all([songPath, videoPath, outPath].map((p) => fs.unlink(p).catch(() => {})));
 	}
 });
 
